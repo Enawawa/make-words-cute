@@ -16,14 +16,11 @@ body {
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
+/* ---------- Animations ---------- */
+
 @keyframes float {
   0%, 100% { transform: translateY(0px) rotate(0deg); }
   50% { transform: translateY(-10px) rotate(3deg); }
-}
-
-@keyframes sparkle {
-  0%, 100% { opacity: 0; transform: scale(0); }
-  50% { opacity: 1; transform: scale(1); }
 }
 
 @keyframes bounce-in {
@@ -33,15 +30,28 @@ body {
   100% { transform: scale(1); opacity: 1; }
 }
 
+@keyframes card-in {
+  0% { transform: translateY(20px) scale(0.95); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
+  50% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+}
+
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 20px rgba(255, 107, 157, 0.3); }
   50% { box-shadow: 0 0 40px rgba(255, 107, 157, 0.6); }
 }
 
 .animate-float { animation: float 3s ease-in-out infinite; }
-.animate-sparkle { animation: sparkle 2s ease-in-out infinite; }
-.animate-bounce-in { animation: bounce-in 0.6s ease-out; }
+.animate-bounce-in { animation: bounce-in 0.5s ease-out; }
+.animate-card-in { animation: card-in 0.4s ease-out both; }
+.animate-mic-pulse { animation: mic-pulse 1.5s ease-in-out infinite; }
 .animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+
+/* ---------- Gradients ---------- */
 
 .cute-gradient {
   background: linear-gradient(135deg, #ff6b9d 0%, #c084fc 50%, #60a5fa 100%);
@@ -53,6 +63,8 @@ body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* ---------- Focus ---------- */
 
 textarea:focus {
   outline: none;
