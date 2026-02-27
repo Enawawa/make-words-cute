@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { useState, useCallback, Suspense } from "react";
+import { useState, useCallback, useEffect, Suspense } from "react";
 import Link from "next/link";
 
 const PLANS = [
@@ -13,93 +13,84 @@ const PLANS = [
     period: "永久免费",
     emoji: "🎁",
     color: "border-gray-200",
-    badge: "bg-gray-100 text-gray-600",
     features: [
-      { text: "每日 5 次萌化", included: true },
-      { text: "单语言输出", included: true },
-      { text: "6 种风格", included: true },
-      { text: "语音输入", included: true },
-      { text: "多语言输出", included: false },
-      { text: "无限使用次数", included: false },
-      { text: "优先响应速度", included: false },
+      { text: "每日 5 次萌化", ok: true },
+      { text: "单语言输出", ok: true },
+      { text: "6 种风格", ok: true },
+      { text: "语音输入", ok: true },
+      { text: "多语言输出", ok: false },
+      { text: "无限使用次数", ok: false },
     ],
   },
   {
     key: "pro",
     name: "Pro 专业版",
-    price: "$4.99",
+    price: "¥19.9",
     period: "/月",
     emoji: "👑",
     color: "border-[var(--color-primary)]",
-    badge: "bg-gradient-to-r from-amber-400 to-orange-400 text-white",
     popular: true,
     features: [
-      { text: "无限次萌化", included: true },
-      { text: "5 种语言全解锁", included: true },
-      { text: "6 种风格全解锁", included: true },
-      { text: "语音输入", included: true },
-      { text: "多语言同时输出", included: true },
-      { text: "优先响应速度", included: true },
-      { text: "专属客服支持", included: true },
+      { text: "无限次萌化", ok: true },
+      { text: "5 种语言全解锁", ok: true },
+      { text: "6 种风格全解锁", ok: true },
+      { text: "语音输入", ok: true },
+      { text: "多语言同时输出", ok: true },
+      { text: "优先响应速度", ok: true },
     ],
   },
 ];
 
-const PAYMENT_METHODS = [
-  { name: "Visa/Mastercard", icon: "💳" },
-  { name: "支付宝 Alipay", icon: "🔵" },
-  { name: "Apple Pay", icon: "🍎" },
-  { name: "Google Pay", icon: "🟢" },
-];
-
 function PricingContent() {
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
   const searchParams = useSearchParams();
-  const [loading, setLoading] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  const [qrUrl, setQrUrl] = useState("");
+  const [orderId, setOrderId] = useState("");
+  const [testMode, setTestMode] = useState(false);
+  const [paymentDone, setPaymentDone] = useState(false);
 
   const success = searchParams.get("success") === "true";
-  const canceled = searchParams.get("canceled") === "true";
-
   const isPro = session?.user?.plan === "pro";
 
-  const handleCheckout = useCallback(async () => {
-    setLoading("checkout");
-    try {
-      const res = await fetch("/api/stripe/checkout", { method: "POST" });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert(data.error || "无法创建支付");
-        setLoading(null);
-      }
-    } catch {
-      alert("网络错误，请重试");
-      setLoading(null);
-    }
-  }, []);
+  /* 轮询订单状态 */
+  useEffect(() => {
+    if (!orderId || paymentDone) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/pay/wechat?orderId=${orderId}`);
+        const data = await res.json();
+        if (data.status === "paid") {
+          setPaymentDone(true);
+          clearInterval(interval);
+          await update({ plan: "pro" });
+        }
+      } catch { /* ignore */ }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [orderId, paymentDone, update]);
 
-  const handlePortal = useCallback(async () => {
-    setLoading("portal");
+  const handlePay = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await fetch("/api/stripe/portal", { method: "POST" });
+      const res = await fetch("/api/pay/wechat", { method: "POST" });
       const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert(data.error || "无法打开管理页面");
-        setLoading(null);
-      }
+      if (!res.ok) { alert(data.error); setLoading(false); return; }
+      setQrUrl(data.qrUrl);
+      setOrderId(data.orderId);
+      setTestMode(data.testMode || false);
+      setShowQr(true);
     } catch {
       alert("网络错误，请重试");
-      setLoading(null);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   return (
     <main className="min-h-screen py-12 px-4">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
         <div className="text-center mb-10">
           <Link href="/" className="inline-block mb-4">
             <span className="text-2xl font-extrabold cute-gradient-text">Make Words Cute</span>
@@ -112,15 +103,35 @@ function PricingContent() {
           </p>
         </div>
 
-        {/* Success / Cancel banners */}
-        {success && (
+        {(success || paymentDone) && (
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-2xl text-green-700 text-center font-semibold animate-bounce-in">
-            🎉 订阅成功！欢迎成为 Pro 会员，尽情萌化吧~
+            🎉 支付成功！欢迎成为 Pro 会员，尽情萌化吧~
           </div>
         )}
-        {canceled && (
-          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-2xl text-yellow-700 text-center animate-bounce-in">
-            支付已取消，你可以随时重新订阅 ✨
+
+        {/* 微信支付弹窗 */}
+        {showQr && !paymentDone && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowQr(false)}>
+            <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl animate-bounce-in" onClick={(e) => e.stopPropagation()}>
+              <div className="text-4xl mb-3">💚</div>
+              <h3 className="text-lg font-bold mb-1">微信扫码支付</h3>
+              <p className="text-sm text-gray-500 mb-4">Pro 专业版 · ¥19.9/月</p>
+              {testMode && (
+                <div className="mb-3 px-3 py-1.5 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-600">
+                  🧪 测试模式：3秒后自动确认支付
+                </div>
+              )}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qrUrl} alt="微信支付二维码" className="w-56 h-56 mx-auto rounded-xl border border-gray-200" />
+              <p className="text-xs text-gray-400 mt-3">打开微信 → 扫一扫 → 完成支付</p>
+              <div className="mt-4 flex items-center justify-center gap-2 text-sm text-gray-400">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                等待支付中...
+              </div>
+              <button onClick={() => setShowQr(false)} className="mt-4 text-xs text-gray-400 hover:text-gray-600">
+                取消支付
+              </button>
+            </div>
           </div>
         )}
 
@@ -131,9 +142,7 @@ function PricingContent() {
             return (
               <div
                 key={plan.key}
-                className={`relative bg-white rounded-3xl border-2 ${plan.color} p-8 transition-all hover:shadow-lg ${
-                  plan.popular ? "shadow-lg" : ""
-                }`}
+                className={`relative bg-white rounded-3xl border-2 ${plan.color} p-8 transition-all hover:shadow-lg ${plan.popular ? "shadow-lg" : ""}`}
               >
                 {plan.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -142,7 +151,6 @@ function PricingContent() {
                     </span>
                   </div>
                 )}
-
                 <div className="text-center mb-6">
                   <span className="text-4xl mb-2 block">{plan.emoji}</span>
                   <h3 className="text-xl font-bold">{plan.name}</h3>
@@ -154,41 +162,29 @@ function PricingContent() {
 
                 <ul className="space-y-3 mb-8">
                   {plan.features.map((f) => (
-                    <li key={f.text} className={`flex items-center gap-2 text-sm ${f.included ? "" : "text-gray-300"}`}>
-                      <span>{f.included ? "✅" : "❌"}</span>
-                      {f.text}
+                    <li key={f.text} className={`flex items-center gap-2 text-sm ${f.ok ? "" : "text-gray-300"}`}>
+                      <span>{f.ok ? "✅" : "❌"}</span>{f.text}
                     </li>
                   ))}
                 </ul>
 
-                {isCurrent && isPro && plan.key === "pro" ? (
-                  <button
-                    onClick={handlePortal}
-                    disabled={loading === "portal"}
-                    className="w-full py-3.5 rounded-2xl border-2 border-[var(--color-primary)] text-[var(--color-primary)] font-bold transition-all hover:bg-pink-50"
-                  >
-                    {loading === "portal" ? "加载中..." : "💎 管理订阅"}
-                  </button>
-                ) : plan.key === "pro" && !isPro ? (
+                {plan.key === "pro" && !isPro ? (
                   session ? (
                     <button
-                      onClick={handleCheckout}
-                      disabled={loading === "checkout"}
+                      onClick={handlePay}
+                      disabled={loading}
                       className="w-full py-3.5 rounded-2xl text-white font-bold cute-gradient transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
                     >
-                      {loading === "checkout" ? "跳转支付中..." : "✨ 立即升级 Pro"}
+                      {loading ? "创建订单中..." : "💚 微信支付 · ¥19.9/月"}
                     </button>
                   ) : (
-                    <Link
-                      href="/login"
-                      className="block w-full py-3.5 rounded-2xl text-center text-white font-bold cute-gradient transition-all hover:scale-[1.02]"
-                    >
+                    <Link href="/login" className="block w-full py-3.5 rounded-2xl text-center text-white font-bold cute-gradient">
                       登录后升级
                     </Link>
                   )
                 ) : (
                   <div className="w-full py-3.5 rounded-2xl border-2 border-gray-200 text-center text-gray-400 font-semibold">
-                    {isCurrent ? "当前方案" : "基础方案"}
+                    {isCurrent && isPro ? "👑 当前方案" : "当前方案"}
                   </div>
                 )}
               </div>
@@ -196,22 +192,17 @@ function PricingContent() {
           })}
         </div>
 
-        {/* Payment methods */}
         <div className="text-center mb-8">
-          <p className="text-sm text-[var(--color-text-muted)] mb-3">支持多种支付方式</p>
+          <p className="text-sm text-[var(--color-text-muted)] mb-3">支持支付方式</p>
           <div className="flex items-center justify-center gap-4 flex-wrap">
-            {PAYMENT_METHODS.map((m) => (
-              <span key={m.name} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-full border border-gray-200 text-xs text-gray-500">
-                {m.icon} {m.name}
-              </span>
-            ))}
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-full border border-green-200 text-xs text-green-600 font-semibold">
+              💚 微信支付
+            </span>
           </div>
         </div>
 
         <div className="text-center">
-          <Link href="/" className="text-sm text-[var(--color-primary)] hover:underline">
-            ← 返回首页
-          </Link>
+          <Link href="/" className="text-sm text-[var(--color-primary)] hover:underline">← 返回首页</Link>
         </div>
       </div>
     </main>

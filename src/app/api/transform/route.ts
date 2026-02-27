@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { LANGUAGES } from "@/lib/languages";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { PLANS } from "@/lib/stripe";
+import { PLANS } from "@/lib/plans";
 
 const SILICONFLOW_API_URL =
   "https://api.siliconflow.cn/v1/chat/completions";

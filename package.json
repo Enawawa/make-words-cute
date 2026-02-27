@@ -4,26 +4,24 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
+    "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
-    "@prisma/adapter-better-sqlite3": "^7.4.1",
-    "@prisma/client": "^7.4.1",
-    "better-sqlite3": "^12.6.2",
+    "@prisma/client": "^5.22.0",
     "next": "^15.1.0",
     "next-auth": "^5.0.0-beta.30",
     "nodemailer": "^7.0.13",
+    "prisma": "^5.22.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "stripe": "^20.4.0"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22",
     "@types/nodemailer": "^7.0.11",
     "@types/react": "^19",
@@ -31,7 +29,6 @@
     "eslint": "^9",
     "eslint-config-next": "^15.1.0",
     "postcss": "^8",
-    "prisma": "^7.4.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
