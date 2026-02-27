@@ -1,5 +1,6 @@
 datasource db {
   provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -13,7 +14,6 @@ model User {
   emailVerified    DateTime?
   image            String?
   plan             String    @default("free")
-  stripeCustomerId String?
   dailyUsage       Int       @default(0)
   lastUsageDate    String?
   accounts         Account[]
@@ -64,4 +64,17 @@ model EmailOtp {
   createdAt DateTime @default(now())
 
   @@index([email])
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  userId    String
+  amount    Int
+  method    String
+  status    String   @default("pending")
+  orderId   String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
