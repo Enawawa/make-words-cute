@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
 import { LANGUAGES, DEFAULT_LANG } from "@/lib/languages";
+import UserMenu from "@/components/UserMenu";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -187,6 +190,7 @@ function StyleCard({ result, index }: { result: StyleResult; index: number }) {
 /* ------------------------------------------------------------------ */
 
 export default function Home() {
+  const { data: session } = useSession();
   const [input, setInput] = useState("");
   const [selectedLangs, setSelectedLangs] = useState<Set<string>>(new Set([DEFAULT_LANG]));
   const [results, setResults] = useState<ResultsMap>({});
@@ -194,6 +198,8 @@ export default function Home() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState(DEFAULT_LANG);
   const [allCopied, setAllCopied] = useState(false);
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const [needLogin, setNeedLogin] = useState(false);
 
   const handleVoiceTranscript = useCallback(
     (text: string) => setInput((prev) => prev + text),
@@ -243,10 +249,12 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) {
+        if (data.needLogin) setNeedLogin(true);
         setError(data.error || "出了点问题呢~");
         return;
       }
       setResults(data.results || {});
+      if (data.remaining != null) setRemaining(data.remaining);
     } catch {
       setError("网络开小差啦，再试试叭~ 🌐");
     } finally {
@@ -289,6 +297,11 @@ export default function Home() {
       <FloatingEmoji emoji="🐱" className="top-[35%] right-[3%]" />
       <FloatingEmoji emoji="🌈" className="top-[85%] left-[10%]" />
       <FloatingEmoji emoji="⭐" className="top-[45%] left-[6%]" />
+
+      {/* Top bar */}
+      <div className="absolute top-4 right-4 z-50">
+        <UserMenu />
+      </div>
 
       {/* Header */}
       <header className="pt-10 pb-3 text-center px-4">
@@ -395,10 +408,23 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Error */}
+        {/* Error / Auth prompt */}
         {error && (
-          <div className="mt-5 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm animate-bounce-in">
-            {error}
+          <div className="mt-5 p-4 bg-red-50 border border-red-200 rounded-2xl text-sm animate-bounce-in">
+            <p className="text-red-600">{error}</p>
+            {needLogin && (
+              <Link href="/login" className="inline-block mt-2 px-4 py-1.5 rounded-full text-xs font-bold bg-[var(--color-primary)] text-white hover:opacity-90">
+                去登录 →
+              </Link>
+            )}
+          </div>
+        )}
+
+        {/* Usage info for free users */}
+        {session?.user?.plan !== "pro" && remaining != null && (
+          <div className="mt-3 text-center text-xs text-[var(--color-text-muted)]">
+            今日剩余 <span className="font-bold text-[var(--color-primary)]">{remaining}</span> 次免费使用 ·{" "}
+            <Link href="/pricing" className="text-[var(--color-primary)] hover:underline font-semibold">升级 Pro 无限使用</Link>
           </div>
         )}
 
