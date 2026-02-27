@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { LANGUAGES } from "@/lib/languages";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { PLANS } from "@/lib/stripe";
 
 const SILICONFLOW_API_URL =
   "https://api.siliconflow.cn/v1/chat/completions";
@@ -275,43 +278,63 @@ async function generateForLanguage(
 
 export async function POST(request: NextRequest) {
   try {
+    /* ---- Auth check ---- */
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "请先登录后再使用萌化功能~ 🔐", needLogin: true },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const { text, languages } = body as { text?: string; languages?: string[] };
 
     if (!text || typeof text !== "string") {
-      return NextResponse.json(
-        { error: "请输入要萌化的文字喵~ 🐱" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "请输入要萌化的文字喵~ 🐱" }, { status: 400 });
+    }
+    if (text.length > 500) {
+      return NextResponse.json({ error: "文字太多啦，500字以内哦~ 📝" }, { status: 400 });
     }
 
-    if (text.length > 500) {
-      return NextResponse.json(
-        { error: "文字太多啦，500字以内哦~ 📝" },
-        { status: 400 }
-      );
+    /* ---- Usage limits ---- */
+    const user = await prisma.user.findUnique({ where: { id: session.user.id } });
+    const plan = (user?.plan || "free") as keyof typeof PLANS;
+    const config = PLANS[plan] || PLANS.free;
+
+    if (plan === "free" && user) {
+      const today = new Date().toISOString().split("T")[0];
+      const usage = user.lastUsageDate === today ? user.dailyUsage : 0;
+      if (usage >= config.dailyLimit) {
+        return NextResponse.json(
+          { error: `今日免费次数已用完 (${config.dailyLimit}/${config.dailyLimit})，升级 Pro 解锁无限次~ ✨`, needUpgrade: true },
+          { status: 429 }
+        );
+      }
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { dailyUsage: usage + 1, lastUsageDate: today },
+      });
     }
 
     const apiKey = process.env.SILICONFLOW_API_KEY;
     if (!apiKey) {
-      return NextResponse.json(
-        { error: "API 密钥未配置，请联系管理员 🔑" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "API 密钥未配置，请联系管理员 🔑" }, { status: 500 });
     }
 
+    /* ---- Language limits ---- */
     const validCodes = new Set(LANGUAGES.map((l) => l.code));
-    const selectedLangs = (languages && Array.isArray(languages) ? languages : ["zh-CN"]).filter(
+    let selectedLangs = (languages && Array.isArray(languages) ? languages : ["zh-CN"]).filter(
       (c: string) => validCodes.has(c)
     );
-
     if (selectedLangs.length === 0) {
-      return NextResponse.json(
-        { error: "请至少选择一种语言~ 🌐" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "请至少选择一种语言~ 🌐" }, { status: 400 });
+    }
+    if (plan === "free" && selectedLangs.length > config.maxLanguages) {
+      selectedLangs = selectedLangs.slice(0, config.maxLanguages);
     }
 
+    /* ---- Generate ---- */
     const settled = await Promise.allSettled(
       selectedLangs.map((lang: string) => generateForLanguage(text, lang, apiKey))
     );
@@ -323,12 +346,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ results });
+    /* ---- Return with usage info ---- */
+    let remaining: number | null = null;
+    if (plan === "free" && user) {
+      const today = new Date().toISOString().split("T")[0];
+      const updated = await prisma.user.findUnique({ where: { id: user.id } });
+      const used = updated?.lastUsageDate === today ? updated.dailyUsage : 0;
+      remaining = Math.max(0, config.dailyLimit - used);
+    }
+
+    return NextResponse.json({ results, plan, remaining });
   } catch (error) {
     console.error("Transform error:", error);
-    return NextResponse.json(
-      { error: "出了点小问题呢~ 请稍后再试 🛠️" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "出了点小问题呢~ 请稍后再试 🛠️" }, { status: 500 });
   }
 }
