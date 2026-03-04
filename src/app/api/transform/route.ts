@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { LANGUAGES } from "@/lib/languages";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { PLANS } from "@/lib/plans";
 
 const SILICONFLOW_API_URL =
@@ -297,24 +297,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "文字太多啦，500字以内哦~ 📝" }, { status: 400 });
     }
 
-    /* ---- Usage limits ---- */
-    const user = await prisma.user.findUnique({ where: { id: session.user.id } });
-    const plan = (user?.plan || "free") as keyof typeof PLANS;
+    /* ---- Usage limits (cookie-based, stateless) ---- */
+    const plan = (session.user.plan || "free") as keyof typeof PLANS;
     const config = PLANS[plan] || PLANS.free;
 
-    if (plan === "free" && user) {
-      const today = new Date().toISOString().split("T")[0];
-      const usage = user.lastUsageDate === today ? user.dailyUsage : 0;
-      if (usage >= config.dailyLimit) {
-        return NextResponse.json(
-          { error: `今日免费次数已用完 (${config.dailyLimit}/${config.dailyLimit})，升级 Pro 解锁无限次~ ✨`, needUpgrade: true },
-          { status: 429 }
-        );
-      }
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { dailyUsage: usage + 1, lastUsageDate: today },
-      });
+    const cookieStore = await cookies();
+    const today = new Date().toISOString().split("T")[0];
+    const usageCookie = cookieStore.get("daily_usage")?.value || "";
+    const [cookieDate, cookieCount] = usageCookie.split(":");
+    const usage = cookieDate === today ? parseInt(cookieCount || "0", 10) : 0;
+
+    if (plan === "free" && usage >= config.dailyLimit) {
+      return NextResponse.json(
+        { error: `今日免费次数已用完 (${config.dailyLimit}/${config.dailyLimit})，升级 Pro 解锁无限次~ ✨`, needUpgrade: true },
+        { status: 429 }
+      );
     }
 
     const apiKey = process.env.SILICONFLOW_API_KEY;
@@ -346,16 +343,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    /* ---- Return with usage info ---- */
-    let remaining: number | null = null;
-    if (plan === "free" && user) {
-      const today = new Date().toISOString().split("T")[0];
-      const updated = await prisma.user.findUnique({ where: { id: user.id } });
-      const used = updated?.lastUsageDate === today ? updated.dailyUsage : 0;
-      remaining = Math.max(0, config.dailyLimit - used);
-    }
+    /* ---- Update usage cookie ---- */
+    const newUsage = usage + 1;
+    const remaining = plan === "free" ? Math.max(0, config.dailyLimit - newUsage) : null;
 
-    return NextResponse.json({ results, plan, remaining });
+    const response = NextResponse.json({ results, plan, remaining });
+    if (plan === "free") {
+      response.cookies.set("daily_usage", `${today}:${newUsage}`, {
+        httpOnly: true,
+        sameSite: "lax",
+        maxAge: 86400,
+        path: "/",
+      });
+    }
+    return response;
   } catch (error) {
     console.error("Transform error:", error);
     return NextResponse.json({ error: "出了点小问题呢~ 请稍后再试 🛠️" }, { status: 500 });

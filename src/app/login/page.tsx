@@ -7,6 +7,7 @@ import Link from "next/link";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [otpToken, setOtpToken] = useState("");
   const [step, setStep] = useState<"email" | "code">("email");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -34,6 +35,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error); return; }
+      setOtpToken(data.token);
       setStep("code");
       startCountdown();
     } catch {
@@ -51,6 +53,7 @@ export default function LoginPage() {
       const result = await signIn("email-otp", {
         email,
         code,
+        token: otpToken,
         redirect: false,
       });
       if (result?.error) {
@@ -63,7 +66,7 @@ export default function LoginPage() {
       setError("登录失败，请重试");
       setLoading(false);
     }
-  }, [email, code]);
+  }, [email, code, otpToken]);
 
   return (
     <main className="min-h-screen flex items-center justify-center px-4 py-12">
