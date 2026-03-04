@@ -1,10 +1,8 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import { prisma } from "./prisma";
+import { verifyOtpToken } from "./otp";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: [
@@ -14,33 +12,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       credentials: {
         email: { label: "Email", type: "email" },
         code: { label: "Code", type: "text" },
+        token: { label: "Token", type: "text" },
       },
       async authorize(credentials) {
-        const email = credentials?.email as string | undefined;
-        const code = credentials?.code as string | undefined;
-        if (!email || !code) return null;
+        const email = (credentials?.email as string) || "";
+        const code = (credentials?.code as string) || "";
+        const token = (credentials?.token as string) || "";
 
-        const otp = await prisma.emailOtp.findFirst({
-          where: { email, code, expires: { gt: new Date() } },
-          orderBy: { createdAt: "desc" },
-        });
-        if (!otp) return null;
+        if (!email || !code || !token) return null;
+        if (!verifyOtpToken(token, email, code)) return null;
 
-        await prisma.emailOtp.deleteMany({ where: { email } });
-
-        let user = await prisma.user.findUnique({ where: { email } });
-        if (!user) {
-          user = await prisma.user.create({
-            data: { email, emailVerified: new Date() },
-          });
-        } else if (!user.emailVerified) {
-          user = await prisma.user.update({
-            where: { email },
-            data: { emailVerified: new Date() },
-          });
-        }
-
-        return { id: user.id, email: user.email, name: user.name, plan: user.plan };
+        const name = email.split("@")[0];
+        return { id: email, email, name, plan: "free" };
       },
     }),
   ],

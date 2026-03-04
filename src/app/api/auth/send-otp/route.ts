@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { generateOtp, createOtpToken } from "@/lib/otp";
 import nodemailer from "nodemailer";
-
-function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
 
 async function sendOtpEmail(email: string, code: string): Promise<boolean> {
   const host = process.env.SMTP_HOST;
@@ -18,7 +14,12 @@ async function sendOtpEmail(email: string, code: string): Promise<boolean> {
     return true;
   }
 
-  const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+  });
 
   await transporter.sendMail({
     from,
@@ -43,20 +44,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "请输入有效的邮箱地址" }, { status: 400 });
     }
 
-    const recent = await prisma.emailOtp.findFirst({
-      where: { email, createdAt: { gt: new Date(Date.now() - 60_000) } },
-    });
-    if (recent) {
-      return NextResponse.json({ error: "请等待 60 秒后再发送" }, { status: 429 });
-    }
-
     const code = generateOtp();
-    const expires = new Date(Date.now() + 10 * 60_000);
+    const token = createOtpToken(email, code);
 
-    await prisma.emailOtp.create({ data: { email, code, expires } });
     await sendOtpEmail(email, code);
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, token });
   } catch (error) {
     console.error("Send OTP error:", error);
     return NextResponse.json({ error: "发送失败，请稍后重试" }, { status: 500 });
